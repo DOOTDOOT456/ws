@@ -13,12 +13,14 @@ header{padding:14px 20px;background:#1a1a2e;border-bottom:1px solid #2a2a4a;disp
 .controls input{background:#0f0f1a;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:.85rem;width:300px}
 .controls button{padding:8px 18px;border:none;border-radius:6px;font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .15s}
 .controls button:hover{opacity:.85}
-.btn-c{background:#7c83fd;color:#fff}.btn-d{background:#e74c3c;color:#fff}.hidden{display:none}
+.btn-c{background:#7c83fd;color:#fff}.btn-d{background:#e74c3c;color:#fff}.btn-fs{background:#2a2a4a;color:#e0e0e0}.hidden{display:none}
 .sbar{padding:6px 20px;background:#16213e;font-size:.78rem;display:flex;gap:18px;color:#888;flex-wrap:wrap}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;background:#555}
 .on .dot{background:#2ecc71}.off .dot{background:#e74c3c}
 .viewer{flex:1;display:flex;align-items:center;justify-content:center;padding:12px}
 canvas{max-width:100%;max-height:calc(100vh - 130px);border:1px solid #2a2a4a;border-radius:8px;background:#000;cursor:crosshair}
+.viewer:fullscreen,.viewer:-webkit-full-screen{padding:0;background:#000}
+.viewer:fullscreen canvas,.viewer:-webkit-full-screen canvas{width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;border:none;border-radius:0}
 .ph{text-align:center;color:#555}.ph h2{margin-bottom:8px;font-weight:400}.ph .ic{font-size:3.5rem;margin-bottom:12px;opacity:.3}
 .toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;background:#e74c3c;color:#fff;border-radius:8px;font-size:.83rem;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.show{opacity:1}
@@ -31,6 +33,7 @@ canvas{max-width:100%;max-height:calc(100vh - 130px);border:1px solid #2a2a4a;bo
 <input type="text" id="url" placeholder="wss://your-tunnel-url:8765" value="ws://localhost:8765">
 <button class="btn-c" id="bc" onclick="connect()">Connect</button>
 <button class="btn-d hidden" id="bd" onclick="disconnect()">Disconnect</button>
+<button class="btn-fs" id="bfs" onclick="toggleFullscreen()" title="Toggle fullscreen (F11)">⛶ Fullscreen</button>
 </div>
 </header>
 <div class="sbar" id="sbar">
@@ -78,8 +81,24 @@ ws.onclose=()=>{connected=false;setStatus(false);document.getElementById('fps').
 ws.onerror=()=>toast('Connection error — check URL & server');
 }
 function disconnect(){if(ws)ws.close();connected=false;setStatus(false)}
+function toggleFullscreen(){
+const v=document.getElementById('viewer');
+if(document.fullscreenElement||document.webkitFullscreenElement){
+if(document.exitFullscreen)document.exitFullscreen();else if(document.webkitExitFullscreen)document.webkitExitFullscreen();
+}else{
+if(v.requestFullscreen)v.requestFullscreen().catch(()=>toast('Fullscreen not supported'));
+else if(v.webkitRequestFullscreen)v.webkitRequestFullscreen();
+}}
+function updateFsBtn(){
+const fs=!!(document.fullscreenElement||document.webkitFullscreenElement);
+const b=document.getElementById('bfs');if(b)b.innerHTML=fs?'⛶ Exit':'⛶ Fullscreen';
+}
+document.addEventListener('fullscreenchange',updateFsBtn);
+document.addEventListener('webkitfullscreenchange',updateFsBtn);
 function send(o){if(connected&&ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-document.addEventListener('keydown',e=>{if(document.activeElement===document.getElementById('url'))return;
+document.addEventListener('keydown',e=>{
+if(e.key==='F11'){e.preventDefault();toggleFullscreen();return;}
+if(document.activeElement===document.getElementById('url'))return;
 if(['Backspace','Space','F5'].includes(e.key))e.preventDefault();
 send({type:'input',action:'key',key:e.key,code:e.code,pressed:true})});
 document.addEventListener('keyup',e=>{if(document.activeElement===document.getElementById('url'))return;
