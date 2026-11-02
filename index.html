@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Desktop Viewer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f0f0f;color:#e0e0e0;min-height:100vh;display:flex;flex-direction:column}
+header{padding:14px 20px;background:#1a1a2e;border-bottom:1px solid #2a2a4a;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.brand{font-size:1.15rem;font-weight:600;color:#7c83fd}
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.controls input{background:#0f0f1a;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:.85rem;width:300px}
+.controls button{padding:8px 18px;border:none;border-radius:6px;font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .15s}
+.controls button:hover{opacity:.85}
+.btn-c{background:#7c83fd;color:#fff}.btn-d{background:#e74c3c;color:#fff}.hidden{display:none}
+.sbar{padding:6px 20px;background:#16213e;font-size:.78rem;display:flex;gap:18px;color:#888;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;background:#555}
+.on .dot{background:#2ecc71}.off .dot{background:#e74c3c}
+.viewer{flex:1;display:flex;align-items:center;justify-content:center;padding:12px}
+canvas{max-width:100%;max-height:calc(100vh - 130px);border:1px solid #2a2a4a;border-radius:8px;background:#000;cursor:crosshair}
+.ph{text-align:center;color:#555}.ph h2{margin-bottom:8px;font-weight:400}.ph .ic{font-size:3.5rem;margin-bottom:12px;opacity:.3}
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;background:#e74c3c;color:#fff;border-radius:8px;font-size:.83rem;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+<div class="brand">🖥️ Desktop Viewer</div>
+<div class="controls">
+<input type="text" id="url" placeholder="wss://your-tunnel-url:8765" value="ws://localhost:8765">
+<button class="btn-c" id="bc" onclick="connect()">Connect</button>
+<button class="btn-d hidden" id="bd" onclick="disconnect()">Disconnect</button>
+</div>
+</header>
+<div class="sbar" id="sbar">
+<span id="st" class="off"><span class="dot"></span>Disconnected</span>
+<span id="fps">FPS: --</span>
+<span id="res">Resolution: --</span>
+<span id="lat">Latency: --</span>
+</div>
+<div class="viewer" id="viewer">
+<div class="ph" id="ph"><div class="ic">🖥️</div><h2>Enter your server URL to connect</h2><p>Run <b>server.py</b> on your Windows machine, expose it with a tunnel,<br>then paste the WebSocket URL above.</p></div>
+<canvas id="cv" style="display:none"></canvas>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+let ws=null,connected=false,fc=0,lt=Date.now();
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000)}
+function setStatus(on){
+const s=document.getElementById('st');
+s.className=on?'on':'off';
+s.innerHTML=`<span class="dot"></span>${on?'Connected':'Disconnected'}`;
+document.getElementById('bc').classList.toggle('hidden',on);
+document.getElementById('bd').classList.toggle('hidden',!on);
+document.getElementById('url').disabled=on;
+}
+function connect(){
+const u=document.getElementById('url').value.trim();
+if(!u)return toast('Enter a server URL');
+document.getElementById('ph').style.display='none';
+cv.style.display='block';
+try{ws=new WebSocket(u)}catch(e){return toast('Invalid URL')}
+ws.binaryType='arraybuffer';
+ws.onopen=()=>{connected=true;setStatus(true);toast('Connected!')};
+ws.onmessage=e=>{
+if(e.data instanceof ArrayBuffer){
+const img=new Image();
+img.onload=()=>{cv.width=img.width;cv.height=img.height;ctx.drawImage(img,0,0);URL.revokeObjectURL(img.src);
+fc++;const n=Date.now();if(n-lt>=1000){document.getElementById('fps').textContent=`FPS: ${fc}`;fc=0;lt=n}
+document.getElementById('res').textContent=`Resolution: ${img.width}x${img.height}`;};
+img.src=URL.createObjectURL(new Blob([e.data],{type:'image/jpeg'}));
+}else{
+try{const d=JSON.parse(e.data);if(d.type==='latency'){const ms=d.t?Math.max(0,Date.now()-d.t):d.ms;document.getElementById('lat').textContent=`Latency: ${ms}ms`}}catch(x){}
+}};
+ws.onclose=()=>{connected=false;setStatus(false);document.getElementById('fps').textContent='FPS: --';document.getElementById('lat').textContent='Latency: --'};
+ws.onerror=()=>toast('Connection error — check URL & server');
+}
+function disconnect(){if(ws)ws.close();connected=false;setStatus(false)}
+function send(o){if(connected&&ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
+document.addEventListener('keydown',e=>{if(document.activeElement===document.getElementById('url'))return;
+if(['Backspace','Space','F5'].includes(e.key))e.preventDefault();
+send({type:'input',action:'key',key:e.key,code:e.code,pressed:true})});
+document.addEventListener('keyup',e=>{if(document.activeElement===document.getElementById('url'))return;
+send({type:'input',action:'key',key:e.key,code:e.code,pressed:false})});
+function pos(e){const r=cv.getBoundingClientRect();return{x:Math.round((e.clientX-r.left)*(cv.width/r.width)),y:Math.round((e.clientY-r.top)*(cv.height/r.height))}}
+cv.addEventListener('mousedown',e=>{const p=pos(e);const b=e.button===0?'left':e.button===1?'middle':'right';send({type:'input',action:'click',x:p.x,y:p.y,button:b,pressed:true})});
+cv.addEventListener('mouseup',e=>{const p=pos(e);const b=e.button===0?'left':e.button===1?'middle':'right';send({type:'input',action:'click',x:p.x,y:p.y,button:b,pressed:false})});
+cv.addEventListener('mousemove',e=>{const p=pos(e);send({type:'input',action:'move',x:p.x,y:p.y})});
+cv.addEventListener('wheel',e=>{e.preventDefault();send({type:'input',action:'scroll',delta:e.deltaY})},{passive:false});
+document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter'&&!connected)connect()});
+setInterval(()=>{if(connected&&ws&&ws.readyState===1)send({action:'ping',t:Date.now()})},2000);
+</script>
+</body>
+</html>
